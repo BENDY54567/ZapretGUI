@@ -1,0 +1,67 @@
+name: Build Zapret GUI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ps2exe
+        shell: powershell
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-Module -Name ps2exe -Scope CurrentUser -Force
+
+      - name: Build ZapretGUI.exe
+        shell: powershell
+        run: |
+          Import-Module ps2exe -Force
+          $dir  = (Get-ChildItem -Directory -Filter 'zapret-discord-youtube-*' | Select-Object -First 1).FullName
+          $icon = Join-Path $dir 'assets\zapret.ico'
+          Invoke-ps2exe -inputFile (Join-Path $dir 'zapret_gui_v3.ps1') `
+                        -outputFile (Join-Path $PWD 'ZapretGUI.exe') `
+                        -noConsole -requireAdmin -STA -title 'Zapret GUI BETA' -iconFile $icon
+          if (-not (Test-Path 'ZapretGUI.exe')) { throw 'ZapretGUI.exe not created' }
+
+      - name: Stage files (without GUI source)
+        shell: powershell
+        run: |
+          $dir = (Get-ChildItem -Directory -Filter 'zapret-discord-youtube-*' | Select-Object -First 1)
+          New-Item -ItemType Directory -Path stage -Force | Out-Null
+          Copy-Item $dir.FullName -Destination (Join-Path stage $dir.Name) -Recurse
+          Remove-Item (Join-Path stage "$($dir.Name)\zapret_gui_v3.ps1") -Force
+          Remove-Item (Join-Path stage "$($dir.Name)\Build-EXE.bat") -Force -ErrorAction SilentlyContinue
+          Copy-Item ZapretGUI.exe stage\
+          Copy-Item ZapretSetup.iss stage\
+
+      - name: Build installer (Inno Setup)
+        shell: powershell
+        run: |
+          choco install innosetup -y --no-progress
+          $ver = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0-dev' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/Odist" "/DMyAppVersion=$ver" "stage\ZapretSetup.iss"
+
+      - name: Pack portable zip
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path stage\* -DestinationPath dist\Zapret-portable.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zapret-build
+          path: dist/*
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
