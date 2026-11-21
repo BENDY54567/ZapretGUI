@@ -214,7 +214,7 @@ $btnClose.Add_Click({ $window.Close() })
 $btnInstall.Add_Click({
   try {
     if ($script:Installed) {
-        Start-Process $ExeOutput
+        Start-Process -FilePath $ExeOutput -Verb RunAs -WorkingDirectory $RootDir
         $window.Close()
         return
     }

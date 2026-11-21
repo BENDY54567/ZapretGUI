@@ -44,7 +44,7 @@ Name: "{group}\Zapret"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\Zapret"; Filename: "{app}\{#MyAppExeName}"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Zapret"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Zapret"; Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallDelete]
 ; файлы, которые программа создаёт сама во время работы (оценки, настройки и т.п.)

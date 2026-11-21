@@ -494,7 +494,7 @@ $btnClose.Add_Click({ $window.Close() })
 
 $btnUpdate.Add_Click({
     if ($script:Done) {
-        try { if ($script:ExePath -and (Test-Path -LiteralPath $script:ExePath)) { Start-Process -FilePath $script:ExePath -WorkingDirectory $script:DstRoot } } catch {}
+        try { if ($script:ExePath -and (Test-Path -LiteralPath $script:ExePath)) { Start-Process -FilePath $script:ExePath -Verb RunAs -WorkingDirectory $script:DstRoot } } catch {}
         $window.Close()
         return
     }
