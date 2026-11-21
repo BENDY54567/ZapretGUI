@@ -1144,8 +1144,7 @@ function Start-NextBatchItem {
 
     $script:SelectedStrategy = $next
     if ($script:StrategyItems.ContainsKey($next)) {
-        foreach ($b in $script:StrategyItems.Values) { $b.Background = [System.Windows.Media.Brushes]::Transparent }
-        $script:StrategyItems[$next].Background = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#221F35")
+        Set-StrategySelectedVisual -Name $next
         $script:StrategyItems[$next].BringIntoView()
     }
     $lblSelected.Text = ($next -replace '\.bat$', '')
@@ -1492,10 +1491,50 @@ function Start-TestAsync {
     <Window.Resources>
         <Style TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="RenderTransform">
                 <Setter.Value>
                     <ScaleTransform ScaleX="1" ScaleY="1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10"/>
+                            <Border x:Name="hl" Background="White" CornerRadius="10" Opacity="0" IsHitTestVisible="False"/>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="hl" Storyboard.TargetProperty="Opacity" To="0.10" Duration="0:0:0.14"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="hl" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="hl" Property="Opacity" Value="0.2"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
@@ -1503,18 +1542,20 @@ function Start-TestAsync {
                     <Trigger.EnterActions>
                         <BeginStoryboard>
                             <Storyboard>
-                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" To="1.04" Duration="0:0:0.12"/>
-                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY" To="1.04" Duration="0:0:0.12"/>
-                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0.88" Duration="0:0:0.12"/>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" To="1.03" Duration="0:0:0.14">
+                                    <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY" To="1.03" Duration="0:0:0.14">
+                                    <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
                             </Storyboard>
                         </BeginStoryboard>
                     </Trigger.EnterActions>
                     <Trigger.ExitActions>
                         <BeginStoryboard>
                             <Storyboard>
-                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" To="1" Duration="0:0:0.15"/>
-                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY" To="1" Duration="0:0:0.15"/>
-                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX" To="1" Duration="0:0:0.18"/>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY" To="1" Duration="0:0:0.18"/>
                             </Storyboard>
                         </BeginStoryboard>
                     </Trigger.ExitActions>
@@ -1600,10 +1641,10 @@ function Start-TestAsync {
             <StackPanel.RenderTransform>
                 <TranslateTransform X="0"/>
             </StackPanel.RenderTransform>
-            <Button x:Name="btnAbout" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Margin="0,20,0,0" Cursor="Hand"><Viewbox Width="22" Height="22" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Ellipse Canvas.Left="2" Canvas.Top="2" Width="20" Height="20" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Path Data="M 12,11 L 12,17" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Canvas.Left="10.9" Canvas.Top="6" Width="2.2" Height="2.2" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/></Canvas></Viewbox></Button>
-            <Button x:Name="btnAdvanced" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Cursor="Hand"><Viewbox Width="22" Height="22" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Path Data="M 10.81,4.49 L 11.04,1.85 L 12.96,1.85 L 13.19,4.49 L 16.47,5.85 L 18.50,4.14 L 19.86,5.50 L 18.15,7.53 L 19.51,10.81 L 22.15,11.04 L 22.15,12.96 L 19.51,13.19 L 18.15,16.47 L 19.86,18.50 L 18.50,19.86 L 16.47,18.15 L 13.19,19.51 L 12.96,22.15 L 11.04,22.15 L 10.81,19.51 L 7.53,18.15 L 5.50,19.86 L 4.14,18.50 L 5.85,16.47 L 4.49,13.19 L 1.85,12.96 L 1.85,11.04 L 4.49,10.81 L 5.85,7.53 L 4.14,5.50 L 5.50,4.14 L 7.53,5.85 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Canvas.Left="8.6" Canvas.Top="8.6" Width="6.8" Height="6.8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-            <Button x:Name="btnDomainFinder" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Cursor="Hand" ToolTip="Определить домены приложения/сайта"><Viewbox Width="21" Height="21" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Ellipse Canvas.Left="3" Canvas.Top="3" Width="13" Height="13" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Path Data="M 14.5,14.5 L 21,21" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button>
-            <Button x:Name="btnPlayer" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Cursor="Hand"><Viewbox Width="21" Height="21" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Path Data="M 9,18 L 9,5 L 20,3 L 20,16" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Canvas.Left="4" Canvas.Top="15" Width="5" Height="5" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/><Ellipse Canvas.Left="15" Canvas.Top="13" Width="5" Height="5" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/></Canvas></Viewbox></Button>
+            <Grid Margin="0,20,0,0"><Button x:Name="btnAbout" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Cursor="Hand"><Viewbox Width="22" Height="22" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Ellipse Canvas.Left="2" Canvas.Top="2" Width="20" Height="20" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Path Data="M 12,11 L 12,17" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Canvas.Left="10.9" Canvas.Top="6" Width="2.2" Height="2.2" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/></Canvas></Viewbox></Button><Border x:Name="barAbout" Width="3" Height="28" CornerRadius="0,3,3,0" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5"><Border.RenderTransform><ScaleTransform ScaleY="0.3"/></Border.RenderTransform><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#8E44E0" Offset="0"/><GradientStop Color="#E63950" Offset="1"/></LinearGradientBrush></Border.Background></Border></Grid>
+            <Grid><Button x:Name="btnAdvanced" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Cursor="Hand"><Viewbox Width="22" Height="22" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Path Data="M 10.81,4.49 L 11.04,1.85 L 12.96,1.85 L 13.19,4.49 L 16.47,5.85 L 18.50,4.14 L 19.86,5.50 L 18.15,7.53 L 19.51,10.81 L 22.15,11.04 L 22.15,12.96 L 19.51,13.19 L 18.15,16.47 L 19.86,18.50 L 18.50,19.86 L 16.47,18.15 L 13.19,19.51 L 12.96,22.15 L 11.04,22.15 L 10.81,19.51 L 7.53,18.15 L 5.50,19.86 L 4.14,18.50 L 5.85,16.47 L 4.49,13.19 L 1.85,12.96 L 1.85,11.04 L 4.49,10.81 L 5.85,7.53 L 4.14,5.50 L 5.50,4.14 L 7.53,5.85 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Canvas.Left="8.6" Canvas.Top="8.6" Width="6.8" Height="6.8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button><Border x:Name="barAdvanced" Width="3" Height="28" CornerRadius="0,3,3,0" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5"><Border.RenderTransform><ScaleTransform ScaleY="0.3"/></Border.RenderTransform><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#8E44E0" Offset="0"/><GradientStop Color="#E63950" Offset="1"/></LinearGradientBrush></Border.Background></Border></Grid>
+            <Grid><Button x:Name="btnDomainFinder" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Cursor="Hand" ToolTip="Определить домены приложения/сайта"><Viewbox Width="21" Height="21" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Ellipse Canvas.Left="3" Canvas.Top="3" Width="13" Height="13" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Path Data="M 14.5,14.5 L 21,21" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox></Button><Border x:Name="barDomainFinder" Width="3" Height="28" CornerRadius="0,3,3,0" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5"><Border.RenderTransform><ScaleTransform ScaleY="0.3"/></Border.RenderTransform><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#8E44E0" Offset="0"/><GradientStop Color="#E63950" Offset="1"/></LinearGradientBrush></Border.Background></Border></Grid>
+            <Grid><Button x:Name="btnPlayer" Foreground="#8A8A99" Background="Transparent" BorderThickness="0" Height="56" Cursor="Hand"><Viewbox Width="21" Height="21" IsHitTestVisible="False"><Canvas Width="24" Height="24"><Path Data="M 9,18 L 9,5 L 20,3 L 20,16" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/><Ellipse Canvas.Left="4" Canvas.Top="15" Width="5" Height="5" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/><Ellipse Canvas.Left="15" Canvas.Top="13" Width="5" Height="5" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/></Canvas></Viewbox></Button><Border x:Name="barPlayer" Width="3" Height="28" CornerRadius="0,3,3,0" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5"><Border.RenderTransform><ScaleTransform ScaleY="0.3"/></Border.RenderTransform><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#8E44E0" Offset="0"/><GradientStop Color="#E63950" Offset="1"/></LinearGradientBrush></Border.Background></Border></Grid>
         </StackPanel>
 
         <Grid x:Name="leftListPanel" Grid.Column="1" Background="#12121B" RenderTransformOrigin="0.5,0.5">
@@ -2105,6 +2146,68 @@ try {
 $btnAdvanced = $window.FindName("btnAdvanced")
 $btnDomainFinder = $window.FindName("btnDomainFinder")
 $btnAbout    = $window.FindName("btnAbout")
+
+# ---------- Боковая панель: активный раздел (полоска слева + подсветка значка) ----------
+$script:Sidebar = @{
+    btnAbout        = @{ Button = $btnAbout;        Bar = $window.FindName("barAbout") }
+    btnAdvanced     = @{ Button = $btnAdvanced;     Bar = $window.FindName("barAdvanced") }
+    btnDomainFinder = @{ Button = $btnDomainFinder; Bar = $window.FindName("barDomainFinder") }
+    btnPlayer       = @{ Button = $btnPlayer;       Bar = $window.FindName("barPlayer") }
+}
+$script:SidebarActive = @{}
+
+function Animate-SidebarColor {
+    param($Btn, [string]$Hex, [int]$Ms = 170)
+    try {
+        $b = $Btn.Foreground -as [System.Windows.Media.SolidColorBrush]
+        if ((-not $b) -or $b.IsFrozen) {
+            $b = New-Object System.Windows.Media.SolidColorBrush -ArgumentList ([System.Windows.Media.Color]::FromArgb(255, 138, 138, 153))
+            $Btn.Foreground = $b
+        }
+        $ca = New-Object System.Windows.Media.Animation.ColorAnimation
+        $ca.To = [System.Windows.Media.Color][System.Windows.Media.ColorConverter]::ConvertFromString($Hex)
+        $ca.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds($Ms))
+        $b.BeginAnimation([System.Windows.Media.SolidColorBrush]::ColorProperty, $ca)
+    } catch {}
+}
+
+function Set-SidebarItem {
+    param([string]$Name, [bool]$On)
+    $it = $script:Sidebar[$Name]
+    if (-not $it) { return }
+    $script:SidebarActive[$Name] = $On
+    Animate-SidebarColor -Btn $it.Button -Hex $(if ($On) { "#FFFFFF" } else { "#8A8A99" })
+    $bar = $it.Bar
+    if ($bar) {
+        try {
+            $oa = New-Object System.Windows.Media.Animation.DoubleAnimation
+            $oa.To = $(if ($On) { 1.0 } else { 0.0 })
+            $oa.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(200))
+            $bar.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $oa)
+
+            $sa = New-Object System.Windows.Media.Animation.DoubleAnimation
+            $sa.To = $(if ($On) { 1.0 } else { 0.3 })
+            $sa.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(260))
+            $ez = New-Object System.Windows.Media.Animation.CubicEase
+            $ez.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseOut
+            $sa.EasingFunction = $ez
+            $bar.RenderTransform.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleYProperty, $sa)
+        } catch {}
+    }
+}
+
+foreach ($sbKey in @($script:Sidebar.Keys)) {
+    $sbBtn = $script:Sidebar[$sbKey].Button
+    $sbBtn.Tag = $sbKey
+    $sbBtn.Add_MouseEnter({
+        param($s, $e)
+        if (-not $script:SidebarActive[$s.Tag]) { Animate-SidebarColor -Btn $s -Hex "#D0D0DE" -Ms 120 }
+    })
+    $sbBtn.Add_MouseLeave({
+        param($s, $e)
+        if (-not $script:SidebarActive[$s.Tag]) { Animate-SidebarColor -Btn $s -Hex "#8A8A99" -Ms 180 }
+    })
+}
 $mainView    = $window.FindName("mainView")
 $settingsView= $window.FindName("settingsView")
 $btnBack     = $window.FindName("btnBack")
@@ -2156,13 +2259,49 @@ $script:Strategies = @(Get-Strategies)
 $script:SelectedStrategy = $null
 $script:StrategyItems = @{}
 $script:StrategyIcons = @{}
+$script:StrategyBars = @{}
 $script:LastTestedStrategy = $null
+
+# Плавная смена фона пункта списка (наведение / выбор)
+function Animate-StrategyBg {
+    param($Item, [string]$Hex, [int]$Ms = 160)
+    try {
+        $brush = $Item.Background -as [System.Windows.Media.SolidColorBrush]
+        if ((-not $brush) -or $brush.IsFrozen) {
+            $brush = New-Object System.Windows.Media.SolidColorBrush -ArgumentList ([System.Windows.Media.Color]::FromArgb(0, 34, 31, 53))
+            $Item.Background = $brush
+        }
+        $ca = New-Object System.Windows.Media.Animation.ColorAnimation
+        $ca.To = [System.Windows.Media.Color][System.Windows.Media.ColorConverter]::ConvertFromString($Hex)
+        $ca.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds($Ms))
+        $brush.BeginAnimation([System.Windows.Media.SolidColorBrush]::ColorProperty, $ca)
+    } catch {}
+}
+
+# Подсвечивает выбранную стратегию: заливка фона + цветная полоска слева
+function Set-StrategySelectedVisual {
+    param([string]$Name)
+    foreach ($key in @($script:StrategyItems.Keys)) {
+        $on = ($key -eq $Name)
+        $hex = if ($on) { "#221F35" } else { "#00221F35" }
+        Animate-StrategyBg -Item $script:StrategyItems[$key] -Hex $hex
+        $bar = $script:StrategyBars[$key]
+        if ($bar) {
+            try {
+                $oa = New-Object System.Windows.Media.Animation.DoubleAnimation
+                $oa.To = $(if ($on) { 1.0 } else { 0.0 })
+                $oa.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(180))
+                $bar.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $oa)
+            } catch {}
+        }
+    }
+}
 
 function New-StrategyItem {
     param([string]$Name)
     $border = New-Object System.Windows.Controls.Border
-    $border.CornerRadius = 8
-    $border.Background = [System.Windows.Media.Brushes]::Transparent
+    $border.CornerRadius = 10
+    $border.Background = New-Object System.Windows.Media.SolidColorBrush -ArgumentList ([System.Windows.Media.Color]::FromArgb(0, 34, 31, 53))
     $border.Padding = "14,10"
     $border.Margin = "0,2"
     $border.Cursor = "Hand"
@@ -2189,15 +2328,42 @@ function New-StrategyItem {
 
     [void]$stack.Children.Add($icon)
     [void]$stack.Children.Add($text)
-    $border.Child = $stack
+
+    # цветная полоска выбранного пункта
+    $bar = New-Object System.Windows.Controls.Border
+    $bar.Width = 3
+    $bar.Height = 20
+    $bar.CornerRadius = 2
+    $bar.HorizontalAlignment = "Left"
+    $bar.VerticalAlignment = "Center"
+    $bar.Margin = "-11,0,0,0"
+    $bar.Opacity = 0
+    $barBrush = New-Object System.Windows.Media.LinearGradientBrush
+    $barBrush.StartPoint = New-Object System.Windows.Point(0, 0)
+    $barBrush.EndPoint = New-Object System.Windows.Point(0, 1)
+    [void]$barBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop(([System.Windows.Media.Color][System.Windows.Media.ColorConverter]::ConvertFromString("#8E44E0")), 0)))
+    [void]$barBrush.GradientStops.Add((New-Object System.Windows.Media.GradientStop(([System.Windows.Media.Color][System.Windows.Media.ColorConverter]::ConvertFromString("#E63950")), 1)))
+    $bar.Background = $barBrush
+    $script:StrategyBars[$Name] = $bar
+
+    $grid = New-Object System.Windows.Controls.Grid
+    [void]$grid.Children.Add($bar)
+    [void]$grid.Children.Add($stack)
+    $border.Child = $grid
+
+    $border.Add_MouseEnter({
+        param($s, $e)
+        if ($script:SelectedStrategy -ne $s.Tag) { Animate-StrategyBg -Item $s -Hex "#1B1B2B" -Ms 120 }
+    })
+    $border.Add_MouseLeave({
+        param($s, $e)
+        if ($script:SelectedStrategy -ne $s.Tag) { Animate-StrategyBg -Item $s -Hex "#001B1B2B" -Ms 180 }
+    })
 
     $border.Add_MouseLeftButtonUp({
         param($s, $e)
         $name = $s.Tag
-        foreach ($b in $script:StrategyItems.Values) {
-            $b.Background = [System.Windows.Media.Brushes]::Transparent
-        }
-        $s.Background = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#221F35")
+        Set-StrategySelectedVisual -Name $name
         $script:SelectedStrategy = $name
         $lblSelected.Text = ($name -replace '\.bat$', '')
     })
@@ -2209,6 +2375,7 @@ function Rebuild-StrategyList {
     $listPanel.Children.Clear()
     $script:StrategyItems = @{}
     $script:StrategyIcons = @{}
+    $script:StrategyBars = @{}
     $script:Strategies = @(Get-Strategies)
 
     if ($script:Strategies.Count -gt 0) {
@@ -2225,7 +2392,34 @@ function Rebuild-StrategyList {
         }
         $script:SelectedStrategy = $script:Strategies[0]
         $lblSelected.Text = ($script:Strategies[0] -replace '\.bat$', '')
-        $script:StrategyItems[$script:Strategies[0]].Background = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#221F35")
+        Set-StrategySelectedVisual -Name $script:Strategies[0]
+
+        # появление пунктов списка по очереди (лёгкий "каскад")
+        try {
+            $n = 0
+            foreach ($nm in $script:Strategies) {
+                $it = $script:StrategyItems[$nm]
+                $tt = New-Object System.Windows.Media.TranslateTransform
+                $tt.X = -18
+                $it.RenderTransform = $tt
+                $it.Opacity = 0
+                $delay = [TimeSpan]::FromMilliseconds([Math]::Min($n * 30, 700))
+                $fa = New-Object System.Windows.Media.Animation.DoubleAnimation
+                $fa.From = 0; $fa.To = 1
+                $fa.BeginTime = $delay
+                $fa.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(260))
+                $sa = New-Object System.Windows.Media.Animation.DoubleAnimation
+                $sa.From = -18; $sa.To = 0
+                $sa.BeginTime = $delay
+                $sa.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(320))
+                $ez = New-Object System.Windows.Media.Animation.CubicEase
+                $ez.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseOut
+                $sa.EasingFunction = $ez
+                $it.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fa)
+                $tt.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $sa)
+                $n++
+            }
+        } catch {}
     }
 }
 
@@ -2299,8 +2493,35 @@ function Update-Uptime {
     } catch { $uptimeText.Text = "" }
 }
 
+# Мягкое пульсирующее свечение вокруг кнопки питания (зелёное — когда zapret работает)
+$script:PowerGlowState = $null
+function Update-PowerGlow {
+    param([bool]$On)
+    if ($script:PowerGlowState -eq $On) { return }
+    $script:PowerGlowState = $On
+    try {
+        $fx = New-Object System.Windows.Media.Effects.DropShadowEffect
+        $fx.ShadowDepth = 0
+        $fx.BlurRadius = 48
+        $fx.Color = [System.Windows.Media.Color][System.Windows.Media.ColorConverter]::ConvertFromString($(if ($On) { "#00E28A" } else { "#8E44E0" }))
+        $fx.Opacity = $(if ($On) { 0.5 } else { 0.25 })
+        $powerCircle.Effect = $fx
+        $pulse = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $pulse.From = $(if ($On) { 0.22 } else { 0.10 })
+        $pulse.To = $(if ($On) { 0.72 } else { 0.40 })
+        $pulse.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(1700))
+        $pulse.AutoReverse = $true
+        $pulse.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+        $sine = New-Object System.Windows.Media.Animation.SineEase
+        $sine.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseInOut
+        $pulse.EasingFunction = $sine
+        $fx.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, $pulse)
+    } catch {}
+}
+
 function Refresh-StatusUI {
     $s = Get-ZapretStatus
+    Update-PowerGlow -On ([bool]$s.On)
     $lblStatus.Text = $s.Text
     if ($s.On) {
         $powerCircle.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#00E28A")
@@ -2361,25 +2582,55 @@ function Invoke-ClickBounce {
 }
 
 function Switch-View {
-    param($From, $To)
+    param($From, $To, [int]$Dir = 1)
     try {
         $script:FadeFrom = $From
         $script:FadeTo = $To
+        $script:SlideDir = $Dir
+        foreach ($v in @($From, $To)) {
+            $v.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+            if ($v.RenderTransform -isnot [System.Windows.Media.TranslateTransform]) {
+                $v.RenderTransform = New-Object System.Windows.Media.TranslateTransform
+            }
+            $v.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $null)
+            $v.RenderTransform.X = 0
+        }
         $script:FadeTo.Opacity = 0
         $script:FadeTo.Visibility = "Visible"
 
+        # уходящий экран: растворяется и уезжает в сторону
         $fadeOut = New-Object System.Windows.Media.Animation.DoubleAnimation
         $fadeOut.From = 1
         $fadeOut.To = 0
-        $fadeOut.Duration = [TimeSpan]::FromMilliseconds(140)
+        $fadeOut.Duration = [TimeSpan]::FromMilliseconds(150)
+        $slideOut = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $slideOut.From = 0
+        $slideOut.To = (-34 * $Dir)
+        $slideOut.Duration = [TimeSpan]::FromMilliseconds(150)
+        $easeIn = New-Object System.Windows.Media.Animation.CubicEase
+        $easeIn.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseIn
+        $slideOut.EasingFunction = $easeIn
         $fadeOut.add_Completed({
             $script:FadeFrom.Visibility = "Collapsed"
+            $script:FadeFrom.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $null)
+            $script:FadeFrom.RenderTransform.X = 0
+
+            # приходящий экран: выезжает с противоположной стороны и проявляется
             $fadeIn = New-Object System.Windows.Media.Animation.DoubleAnimation
             $fadeIn.From = 0
             $fadeIn.To = 1
-            $fadeIn.Duration = [TimeSpan]::FromMilliseconds(180)
+            $fadeIn.Duration = [TimeSpan]::FromMilliseconds(240)
+            $slideIn = New-Object System.Windows.Media.Animation.DoubleAnimation
+            $slideIn.From = (44 * $script:SlideDir)
+            $slideIn.To = 0
+            $slideIn.Duration = [TimeSpan]::FromMilliseconds(300)
+            $easeOut = New-Object System.Windows.Media.Animation.CubicEase
+            $easeOut.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseOut
+            $slideIn.EasingFunction = $easeOut
             $script:FadeTo.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fadeIn)
+            $script:FadeTo.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $slideIn)
         })
+        $script:FadeFrom.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $slideOut)
         $script:FadeFrom.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fadeOut)
     } catch {
         $From.Visibility = "Collapsed"
@@ -2413,14 +2664,18 @@ $btnAdvanced.Add_Click({
     Update-DnsPanel
     Update-LockPanel
     Update-FakesPanel
-    Switch-View -From $mainView -To $settingsView
+    Switch-View -From $mainView -To $settingsView -Dir 1
+    Set-SidebarItem -Name "btnAdvanced" -On $true
 })
 
 $btnDomainFinder.Add_Click({
-    Show-DomainFinderDialog
+    Set-SidebarItem -Name "btnDomainFinder" -On $true
+    try { Show-DomainFinderDialog }
+    finally { Set-SidebarItem -Name "btnDomainFinder" -On $false }
 })
 $btnBack.Add_Click({
-    Switch-View -From $settingsView -To $mainView
+    Switch-View -From $settingsView -To $mainView -Dir -1
+    Set-SidebarItem -Name "btnAdvanced" -On $false
 })
 
 $btnStatus.Add_Click({ Update-Log -Clear -Lines (Invoke-Diagnostics) })
@@ -3171,7 +3426,10 @@ $btnRemoveService.Add_Click({
 })
 
 $btnAbout.Add_Click({
-    [System.Windows.MessageBox]::Show("Zapret GUI`nОболочка для zapret-discord-youtube`nhttps://github.com/Flowseal/zapret-discord-youtube", "О программе") | Out-Null
+    Set-SidebarItem -Name "btnAbout" -On $true
+    try {
+        [System.Windows.MessageBox]::Show("Zapret GUI`nОболочка для zapret-discord-youtube`nhttps://github.com/Flowseal/zapret-discord-youtube", "О программе") | Out-Null
+    } finally { Set-SidebarItem -Name "btnAbout" -On $false }
 })
 
 # ---------------------------------------------------------------
@@ -3981,10 +4239,14 @@ function New-AppIcon {
     return $icon
 }
 
+# Для трея берём иконку, нарисованную кодом (она точно непустая), а .ico и системный щит — только запасные варианты
 $trayIcon = $null
-if (Test-Path -LiteralPath $script:AppIcoFile) { try { $trayIcon = New-Object System.Drawing.Icon -ArgumentList $script:AppIcoFile } catch {} }
-if (-not $trayIcon) { try { $trayIcon = New-AppIcon -Size 32 } catch {} }
-if (-not $trayIcon) { $trayIcon = [System.Drawing.SystemIcons]::Shield }
+$trayIconSource = ""
+try { $trayIcon = New-AppIcon -Size 32; $trayIconSource = "нарисована кодом" } catch { $trayIconSource = "ошибка рисования: " + $_.Exception.Message }
+if (-not $trayIcon -and (Test-Path -LiteralPath $script:AppIcoFile)) {
+    try { $trayIcon = New-Object System.Drawing.Icon -ArgumentList $script:AppIcoFile; $trayIconSource = "файл zapret.ico" } catch {}
+}
+if (-not $trayIcon) { $trayIcon = [System.Drawing.SystemIcons]::Shield; $trayIconSource = "системный щит" }
 $notifyIcon.Icon = $trayIcon
 
 # значок окна (заголовок и панель задач)
@@ -3997,8 +4259,9 @@ try {
         $window.Icon = [System.Windows.Interop.Imaging]::CreateBitmapSourceFromHIcon($winIcon.Handle, [System.Windows.Int32Rect]::Empty, [System.Windows.Media.Imaging.BitmapSizeOptions]::FromEmptyOptions())
     }
 } catch {}
-$notifyIcon.Visible = $true
 $notifyIcon.Text = "Zapret BETA"
+$notifyIcon.Visible = $true
+try { Add-Content -LiteralPath (Join-Path $UtilsDir "tray_debug.log") -Value ("{0} Значок трея создан: {1}, {2}x{3}, Visible={4}, запуск: {5}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $trayIconSource, $trayIcon.Width, $trayIcon.Height, $notifyIcon.Visible, $SelfPath) } catch {}
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $itemShow = New-Object System.Windows.Forms.ToolStripMenuItem "Открыть окно"
@@ -4117,10 +4380,10 @@ function Restore-MainWindow {
     }
 }
 
-# Windows 11 прячет значки новых программ под стрелку "^". Просим систему показывать наш значок
-# рядом с часами. Запись в реестре создаётся для каждого пути к exe отдельно, поэтому помним, какие
-# именно записи уже "закрепили": если пользователь потом спрячет значок сам — мы его не вернём,
-# а после переустановки (новая запись) закрепим заново.
+# Windows 11 по умолчанию прячет значок программы под стрелку "^". Видимость хранится в реестре:
+# HKCU\Control Panel\NotifyIconSettings\<id>\IsPromoted (1 = у часов, 0 = в скрытых).
+# Важно: Windows сбрасывает это значение в 0 при КАЖДОЙ регистрации значка (то есть при каждом запуске
+# программы), поэтому закреплять нужно после каждого старта и периодически перепроверять.
 function Write-TrayLog {
     param([string]$Text)
     try { Add-Content -LiteralPath (Join-Path $UtilsDir "tray_debug.log") -Value ("{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Text) } catch {}
@@ -4128,28 +4391,29 @@ function Write-TrayLog {
 
 function Set-TrayIconPromoted {
     try {
-        if (-not ($SelfPath -like "*.exe")) { return $true }
         $root = "HKCU:\Control Panel\NotifyIconSettings"
         if (-not (Test-Path -LiteralPath $root)) {
-            if (-not $script:TrayLogNoKey) { $script:TrayLogNoKey = $true; Write-TrayLog "Нет раздела NotifyIconSettings (Windows старее Win11 22H2?)" }
+            if (-not $script:TrayLogNoKey) { $script:TrayLogNoKey = $true; Write-TrayLog "Нет раздела NotifyIconSettings (Windows старее Win10 1703?)" }
             return $false
         }
-        $flag = Join-Path $UtilsDir "tray_promoted.flag"
-        $done = @()
-        if (Test-Path -LiteralPath $flag) { $done = @(Get-Content -LiteralPath $flag -ErrorAction SilentlyContinue) }
         $exeName = [System.IO.Path]::GetFileName($SelfPath)
         $found = $false
         foreach ($k in (Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
-            $pth = (Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue).ExecutablePath
-            if ($pth -and ($pth -like ("*\" + $exeName))) {
-                $found = $true
-                if ($done -contains $k.PSChildName) { continue }
+            $props = Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue
+            if (-not $props) { continue }
+            $pth = [string]$props.ExecutablePath
+            $tip = [string]$props.InitialTooltip
+            $mine = $false
+            if ($pth -and $exeName -and ($pth -like ("*\" + $exeName))) { $mine = $true }
+            elseif ($tip -like "Zapret*") { $mine = $true }
+            if (-not $mine) { continue }
+            $found = $true
+            if ($props.IsPromoted -ne 1) {
                 Set-ItemProperty -LiteralPath $k.PSPath -Name "IsPromoted" -Value 1 -Type DWord -Force
-                Add-Content -LiteralPath $flag -Value $k.PSChildName
-                Write-TrayLog ("Значок закреплён: " + $pth)
+                Write-TrayLog ("Значок закреплён у часов: " + $pth + " [" + $k.PSChildName + "]")
             }
         }
-        if (-not $found -and -not $script:TrayLogNoEntry) { $script:TrayLogNoEntry = $true; Write-TrayLog ("Запись для " + $exeName + " в NotifyIconSettings пока не найдена") }
+        if (-not $found -and -not $script:TrayLogNoEntry) { $script:TrayLogNoEntry = $true; Write-TrayLog ("Запись о значке (" + $exeName + ") в NotifyIconSettings пока не найдена") }
         return $found
     } catch {
         Write-TrayLog ("Ошибка закрепления значка: " + $_.Exception.Message)
@@ -4157,12 +4421,14 @@ function Set-TrayIconPromoted {
     }
 }
 
+# Первые минуты проверяем часто, дальше — раз в 20 секунд (на случай перезапуска проводника)
 $script:PromoteTries = 0
 $script:PromoteTimer = New-Object System.Windows.Threading.DispatcherTimer
-$script:PromoteTimer.Interval = [TimeSpan]::FromSeconds(3)
+$script:PromoteTimer.Interval = [TimeSpan]::FromSeconds(2)
 $script:PromoteTimer.Add_Tick({
     $script:PromoteTries++
-    if ((Set-TrayIconPromoted) -or $script:PromoteTries -ge 20) { $script:PromoteTimer.Stop() }
+    [void](Set-TrayIconPromoted)
+    if ($script:PromoteTries -eq 30) { $script:PromoteTimer.Interval = [TimeSpan]::FromSeconds(20) }
 })
 $script:PromoteTimer.Start()
 
@@ -5131,11 +5397,13 @@ $btnPlayer.Add_Click({
     try {
         if ($playerPanel.Visibility -eq "Visible") {
             $playerPanel.Visibility = "Collapsed"
+            Set-SidebarItem -Name "btnPlayer" -On $false
             return
         }
         # Подхватываем новые/удалённые файлы при каждом открытии панели
         Update-PlaylistFromDisk
         $playerPanel.Visibility = "Visible"
+        Set-SidebarItem -Name "btnPlayer" -On $true
     } catch {}
 })
 
@@ -5206,10 +5474,7 @@ function Restore-StrategyAfterUpdate {
         if ((Get-ZapretStatus).On) { return }   # уже включена — ничего не делаем (иначе кнопка переключила бы её в «выкл»)
 
         # выделяем стратегию в списке так же, как при клике
-        foreach ($b in $script:StrategyItems.Values) { $b.Background = [System.Windows.Media.Brushes]::Transparent }
-        if ($script:StrategyItems.ContainsKey($match)) {
-            $script:StrategyItems[$match].Background = (New-Object System.Windows.Media.BrushConverter).ConvertFromString("#221F35")
-        }
+        if ($script:StrategyItems.ContainsKey($match)) { Set-StrategySelectedVisual -Name $match }
         $script:SelectedStrategy = $match
         $lblSelected.Text = ($match -replace '\.bat$', '')
 
