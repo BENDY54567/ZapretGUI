@@ -3977,7 +3977,7 @@ $itemExit = New-Object System.Windows.Forms.ToolStripMenuItem "Выход"
 [void]$trayMenu.Items.Add($itemToggle)
 [void]$trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 [void]$trayMenu.Items.Add($itemExit)
-$notifyIcon.ContextMenuStrip = $trayMenu
+# Меню трея рисуется своим окном (Show-TrayMenu); системное ContextMenuStrip — запасной вариант
 
 function Update-TrayMenu {
     $s = Get-ZapretStatus
@@ -3987,27 +3987,266 @@ function Update-TrayMenu {
 $script:UpdateTray = { Update-TrayMenu }
 Update-TrayMenu
 
-$itemShow.Add_Click({
-    $window.ShowInTaskbar = $true
-    $window.Show()
-    $window.WindowState = "Normal"
-    $window.Activate()
-})
-$notifyIcon.Add_DoubleClick({
-    $window.ShowInTaskbar = $true
-    $window.Show()
-    $window.WindowState = "Normal"
-    $window.Activate()
-})
-$itemToggle.Add_Click({ Start-ToggleZapret })
-
+# ---------------------------------------------------------------
+# Плавное сворачивание в трей, красивое окно закрытия и своё меню трея
+# ---------------------------------------------------------------
 $script:AllowClose = $false
-$itemExit.Add_Click({
+$script:CloseDialogOpen = $false
+$script:TrayMenuWin = $null
+$script:TrayMenuTimer = $null
+$script:TrayMenuClosedAt = [DateTime]::MinValue
+$script:TrayMenuShownAt = [DateTime]::MinValue
+
+# Плавное изменение прозрачности всего содержимого главного окна
+function Animate-MainOpacity {
+    param([double]$To, [int]$Ms = 180, [double]$From = [double]::NaN, [scriptblock]$Done = $null)
+    $c = $window.Content
+    $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+    if (-not [double]::IsNaN($From)) { $a.From = $From }
+    $a.To = $To
+    $a.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds($Ms))
+    $ease = New-Object System.Windows.Media.Animation.CubicEase
+    $ease.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseOut
+    $a.EasingFunction = $ease
+    if ($Done) {
+        $handler = { & $Done }.GetNewClosure()
+        $a.Add_Completed($handler)
+    }
+    $c.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $a)
+}
+
+# Лёгкий сдвиг окна вниз (к трею) или обратно
+function Animate-MainShift {
+    param([double]$To, [int]$Ms = 200, [double]$From = [double]::NaN)
+    try {
+        $shift = $window.FindName("rootShakeTransform")
+        if (-not $shift) { return }
+        $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+        if (-not [double]::IsNaN($From)) { $a.From = $From }
+        $a.To = $To
+        $a.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds($Ms))
+        $ease = New-Object System.Windows.Media.Animation.CubicEase
+        $ease.EasingMode = [System.Windows.Media.Animation.EasingMode]::EaseOut
+        $a.EasingFunction = $ease
+        $shift.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $a)
+    } catch {}
+}
+
+function Reset-MainShift {
+    try {
+        $shift = $window.FindName("rootShakeTransform")
+        if ($shift) {
+            $shift.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $null)
+            $shift.Y = 0
+        }
+    } catch {}
+}
+
+function Hide-ToTray {
+    $done = {
+        try {
+            $window.Content.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+            $window.Content.Opacity = 0
+            Reset-MainShift
+            $window.Hide()
+            $window.ShowInTaskbar = $false
+            $notifyIcon.BalloonTipTitle = "Zapret"
+            $notifyIcon.BalloonTipText = "Программа свёрнута в трей. Zapret продолжает работать в фоне."
+            $notifyIcon.ShowBalloonTip(1500)
+        } catch {}
+    }
+    Animate-MainShift -To 18 -Ms 200
+    Animate-MainOpacity -To 0 -Ms 200 -Done $done
+}
+
+function Restore-MainWindow {
+    $wasHidden = -not $window.IsVisible
+    if ($wasHidden) {
+        $c = $window.Content
+        $c.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+        $c.Opacity = 0
+        $window.ShowInTaskbar = $true
+        $window.Show()
+    }
+    if ($window.WindowState -eq [System.Windows.WindowState]::Minimized) {
+        $window.WindowState = [System.Windows.WindowState]::Normal
+    }
+    [void]$window.Activate()
+    if ($wasHidden) {
+        $done = {
+            try {
+                $window.Content.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+                $window.Content.Opacity = 1
+                Reset-MainShift
+            } catch {}
+        }
+        Animate-MainShift -From 18 -To 0 -Ms 260
+        Animate-MainOpacity -From 0 -To 1 -Ms 240 -Done $done
+    }
+}
+
+function Exit-App {
     $script:AllowClose = $true
-    $notifyIcon.Visible = $false
-    $notifyIcon.Dispose()
+    try { Close-TrayMenu } catch {}
+    try { $notifyIcon.Visible = $false; $notifyIcon.Dispose() } catch {}
     $window.Close()
-})
+}
+
+# ---------- Окно "Закрыть программу?" ----------
+function Complete-CloseDialog {
+    param([string]$Choice)
+    if ($script:CloseDlgBusy) { return }
+    $script:CloseDlgBusy = $true
+    $script:CloseChoice = $Choice
+    try {
+        $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $a.To = 0.0
+        $a.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(140))
+        $a.Add_Completed({ try { $script:closeDlg.Close() } catch {} })
+        $script:closeCard.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $a)
+    } catch {
+        try { $script:closeDlg.Close() } catch {}
+    }
+}
+
+function Show-CloseDialog {
+    [xml]$closeXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Zapret" Width="470" SizeToContent="Height"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI, Segoe UI Emoji, Segoe UI Symbol" UseLayoutRounding="True">
+    <Window.Resources>
+        <Style x:Key="DlgButton" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="11"/>
+                            <Border x:Name="hl" Background="White" CornerRadius="11" Opacity="0"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="hl" Property="Opacity" Value="0.10"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="hl" Property="Opacity" Value="0.18"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+            <BeginStoryboard>
+                <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="card" Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.18"/>
+                    <DoubleAnimation Storyboard.TargetName="cardScale" Storyboard.TargetProperty="ScaleX" From="0.9" To="1" Duration="0:0:0.28">
+                        <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.35"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="cardScale" Storyboard.TargetProperty="ScaleY" From="0.9" To="1" Duration="0:0:0.28">
+                        <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.35"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="cardShift" Storyboard.TargetProperty="Y" From="18" To="0" Duration="0:0:0.28">
+                        <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </Window.Triggers>
+    <Grid Margin="28">
+        <Border x:Name="card" Background="#14141E" BorderBrush="#2A2A3C" BorderThickness="1" CornerRadius="18"
+                Padding="26,24,26,22" Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" Opacity="0.6" BlurRadius="30" ShadowDepth="6"/>
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="cardScale" ScaleX="1" ScaleY="1"/>
+                    <TranslateTransform x:Name="cardShift" Y="0"/>
+                </TransformGroup>
+            </Border.RenderTransform>
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Grid Width="50" Height="50">
+                        <Ellipse>
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#8E44E0" Offset="0"/>
+                                    <GradientStop Color="#E63950" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Viewbox Width="26" Height="26">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M 16,5.07 A 8,8 0 1 1 8,5.07 M 12,3.2 L 12,12" Stroke="White" StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
+                    </Grid>
+                    <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Закрыть Zapret?" FontSize="19" FontWeight="Bold" Foreground="White"/>
+                        <TextBlock Text="Выберите, что сделать с программой" FontSize="12.5" Foreground="#8A8A99" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap" Margin="0,18,0,0" Foreground="#B4B4C2" FontSize="13" LineHeight="20"
+                           Text="В трее программа продолжит работать в фоне, а значок останется рядом с часами. Если закрыть полностью, программа завершится."/>
+                <Button x:Name="btnDlgTray" Style="{StaticResource DlgButton}" Margin="0,22,0,0" IsDefault="True" Content="Свернуть в трей">
+                    <Button.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#8E44E0" Offset="0"/>
+                            <GradientStop Color="#E63950" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Button.Background>
+                </Button>
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="btnDlgExit" Grid.Column="0" Style="{StaticResource DlgButton}" Content="Закрыть полностью"
+                            Background="#2A1620" BorderBrush="#5A2433" BorderThickness="1" Foreground="#FF7A8C"/>
+                    <Button x:Name="btnDlgCancel" Grid.Column="2" Style="{StaticResource DlgButton}" Content="Отмена"
+                            Background="#1F1F2E" Foreground="#C8C8D6" IsCancel="True"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
+"@
+    $closeReader = New-Object System.Xml.XmlNodeReader $closeXaml
+    $script:closeDlg = [Windows.Markup.XamlReader]::Load($closeReader)
+    $script:closeCard = $script:closeDlg.FindName("card")
+    $btnTray = $script:closeDlg.FindName("btnDlgTray")
+    $btnExit = $script:closeDlg.FindName("btnDlgExit")
+    $btnCancel = $script:closeDlg.FindName("btnDlgCancel")
+
+    $script:CloseChoice = "cancel"
+    $script:CloseDlgBusy = $false
+    try { $script:closeDlg.Owner = $window } catch {}
+
+    $btnTray.Add_Click({ Complete-CloseDialog -Choice "tray" })
+    $btnExit.Add_Click({ Complete-CloseDialog -Choice "exit" })
+    $btnCancel.Add_Click({ Complete-CloseDialog -Choice "cancel" })
+
+    # Пока окно открыто, фон главного окна слегка затемняется
+    try { Animate-MainOpacity -To 0.45 -Ms 200 } catch {}
+    [void]$script:closeDlg.ShowDialog()
+    return $script:CloseChoice
+}
 
 $window.Add_Closing({
     param($s, $e)
@@ -4018,24 +4257,248 @@ $window.Add_Closing({
     }
 
     $e.Cancel = $true
-    $choice = [System.Windows.MessageBox]::Show(
-        "Свернуть Zapret в трей (программа продолжит работать в фоне)?`n`nДа — свернуть в трей`nНет — закрыть программу полностью",
-        "Zapret",
-        [System.Windows.MessageBoxButton]::YesNoCancel,
-        [System.Windows.MessageBoxImage]::Question
-    )
+    if ($script:CloseDialogOpen) { return }
+    $script:CloseDialogOpen = $true
+    try { $choice = Show-CloseDialog } finally { $script:CloseDialogOpen = $false }
 
-    if ($choice -eq [System.Windows.MessageBoxResult]::Yes) {
-        $window.Hide()
-        $window.ShowInTaskbar = $false
-        $notifyIcon.BalloonTipTitle = "Zapret"
-        $notifyIcon.BalloonTipText = "Программа свёрнута в трей. Zapret продолжает работать в фоне."
-        $notifyIcon.ShowBalloonTip(1500)
-    } elseif ($choice -eq [System.Windows.MessageBoxResult]::No) {
+    if ($choice -eq "tray") {
+        Hide-ToTray
+    } elseif ($choice -eq "exit") {
         $script:AllowClose = $true
+        $window.Content.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null)
+        $window.Content.Opacity = 1
         $window.Dispatcher.BeginInvoke([Action]{ $window.Close() }, [System.Windows.Threading.DispatcherPriority]::Background) | Out-Null
+    } else {
+        # Отмена — возвращаем яркость окна, программа остаётся открытой
+        Animate-MainOpacity -To 1 -Ms 180 -Done { try { $window.Content.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $null); $window.Content.Opacity = 1 } catch {} }
     }
-    # Cancel — ничего не делаем, окно остаётся открытым
+})
+
+# ---------- Своё меню трея (вместо серого системного) ----------
+function Close-TrayMenu {
+    $w = $script:TrayMenuWin
+    if (-not $w) { return }
+    $script:TrayMenuWin = $null
+    $script:TrayMenuClosedAt = [DateTime]::UtcNow
+    if ($script:TrayMenuTimer) { try { $script:TrayMenuTimer.Stop() } catch {}; $script:TrayMenuTimer = $null }
+    try {
+        $script:TrayMenuClosing = $w
+        $a = New-Object System.Windows.Media.Animation.DoubleAnimation
+        $a.To = 0.0
+        $a.Duration = New-Object System.Windows.Duration -ArgumentList ([TimeSpan]::FromMilliseconds(110))
+        $a.Add_Completed({ try { $script:TrayMenuClosing.Close() } catch {} })
+        $w.Content.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $a)
+    } catch {
+        try { $w.Close() } catch {}
+    }
+}
+
+function Show-TrayMenu {
+    if (([DateTime]::UtcNow - $script:TrayMenuClosedAt).TotalMilliseconds -lt 250) { return }
+    if ($script:TrayMenuWin) { Close-TrayMenu; return }
+
+    $st = Get-ZapretStatus
+    $toggleText = if ($st.On) { "Выключить zapret" } else { "Включить zapret" }
+    $dotColor = if ($st.On) { "#00E28A" } else { "#6B6B78" }
+
+    [xml]$trayXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Zapret" SizeToContent="WidthAndHeight"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True" ShowActivated="True"
+        WindowStartupLocation="Manual" UseLayoutRounding="True"
+        FontFamily="Segoe UI, Segoe UI Emoji, Segoe UI Symbol">
+    <Window.Resources>
+        <Style x:Key="TrayItem" TargetType="Button">
+            <Setter Property="Foreground" Value="#E6E6F0"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="hl" CornerRadius="9" Background="White" Opacity="0"/>
+                            <ContentPresenter Margin="12,0,12,0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="hl" Property="Opacity" Value="0.09"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="hl" Property="Opacity" Value="0.16"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+            <BeginStoryboard>
+                <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="menuRoot" Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.14"/>
+                    <DoubleAnimation Storyboard.TargetName="menuShift" Storyboard.TargetProperty="Y" From="12" To="0" Duration="0:0:0.2">
+                        <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </Window.Triggers>
+    <Grid x:Name="menuRoot" Margin="18" Opacity="0">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="menuShift" Y="0"/>
+        </Grid.RenderTransform>
+        <Border Width="238" Background="#14141E" BorderBrush="#2A2A3C" BorderThickness="1" CornerRadius="14" Padding="8">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" Opacity="0.55" BlurRadius="22" ShadowDepth="4"/>
+            </Border.Effect>
+            <StackPanel>
+                <Grid Margin="6,4,6,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="36" Height="36">
+                        <Ellipse>
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#8E44E0" Offset="0"/>
+                                    <GradientStop Color="#E63950" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Viewbox Width="20" Height="20">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M 16,5.07 A 8,8 0 1 1 8,5.07 M 12,3.2 L 12,12" Stroke="White" StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
+                    </Grid>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Zapret" FontWeight="Bold" FontSize="14" Foreground="White"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <Ellipse x:Name="dotStatus" Width="7" Height="7" Fill="#6B6B78" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="txtStatus" Margin="6,0,0,0" FontSize="11.5" Foreground="#8A8A99"
+                                       TextTrimming="CharacterEllipsis" MaxWidth="160"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+                <Rectangle Height="1" Fill="#262636" Margin="4,0,4,6"/>
+                <Button x:Name="btnTrayOpen" Style="{StaticResource TrayItem}">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="17" Height="17">
+                            <Canvas Width="24" Height="24">
+                                <Rectangle Canvas.Left="3" Canvas.Top="4" Width="18" Height="16" RadiusX="3" RadiusY="3"
+                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"/>
+                                <Path Data="M 3,9 L 21,9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="Открыть окно" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="btnTrayToggle" Style="{StaticResource TrayItem}">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="17" Height="17">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M 16,5.07 A 8,8 0 1 1 8,5.07 M 12,3.2 L 12,12"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock x:Name="txtTrayToggle" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Rectangle Height="1" Fill="#262636" Margin="4,6,4,6"/>
+                <Button x:Name="btnTrayExit" Style="{StaticResource TrayItem}" Foreground="#FF7A8C">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="17" Height="17">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M 9,4 L 5,4 Q 4,4 4,5 L 4,19 Q 4,20 5,20 L 9,20 M 15,8 L 19,12 L 15,16 M 19,12 L 9,12"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"
+                                      StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="Выход" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
+"@
+    $trayReader = New-Object System.Xml.XmlNodeReader $trayXaml
+    $mw = [Windows.Markup.XamlReader]::Load($trayReader)
+    $mw.FindName("txtStatus").Text = [string]$st.Text
+    $mw.FindName("txtTrayToggle").Text = $toggleText
+    $mw.FindName("dotStatus").Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom($dotColor)
+
+    $mw.FindName("btnTrayOpen").Add_Click({ Close-TrayMenu; Restore-MainWindow })
+    $mw.FindName("btnTrayToggle").Add_Click({ Close-TrayMenu; Start-ToggleZapret })
+    $mw.FindName("btnTrayExit").Add_Click({ Close-TrayMenu; Exit-App })
+    $mw.Add_Deactivated({
+        if (([DateTime]::UtcNow - $script:TrayMenuShownAt).TotalMilliseconds -gt 350) { Close-TrayMenu }
+    })
+    $mw.Add_PreviewKeyDown({
+        param($sender, $ke)
+        if ($ke.Key -eq [System.Windows.Input.Key]::Escape) { Close-TrayMenu }
+    })
+
+    # Размер меню и позиция рядом с курсором (над панелью задач), с учётом масштаба экрана
+    $mw.Content.Measure((New-Object System.Windows.Size -ArgumentList ([double]::PositiveInfinity), ([double]::PositiveInfinity)))
+    $size = $mw.Content.DesiredSize
+    $scale = 1.0
+    try {
+        $src = [System.Windows.PresentationSource]::FromVisual($window)
+        if ($src -and $src.CompositionTarget) { $scale = $src.CompositionTarget.TransformToDevice.M11 }
+    } catch {}
+    $cur = [System.Windows.Forms.Cursor]::Position
+    $wa = [System.Windows.Forms.Screen]::FromPoint($cur).WorkingArea
+    $wPx = $size.Width * $scale
+    $hPx = $size.Height * $scale
+    $xPx = $cur.X - ($wPx / 2)
+    if ($xPx + $wPx -gt $wa.Right) { $xPx = $wa.Right - $wPx }
+    if ($xPx -lt $wa.Left) { $xPx = $wa.Left }
+    $yPx = $cur.Y - $hPx - 6
+    if ($yPx -lt $wa.Top) { $yPx = $cur.Y + 6 }
+    if ($yPx + $hPx -gt $wa.Bottom) { $yPx = $wa.Bottom - $hPx }
+    if ($yPx -lt $wa.Top) { $yPx = $wa.Top }
+    $mw.Left = $xPx / $scale
+    $mw.Top = $yPx / $scale
+
+    $script:TrayMenuWin = $mw
+    $script:TrayMenuShownAt = [DateTime]::UtcNow
+    $mw.Show()
+    [void]$mw.Activate()
+    [void]$mw.Focus()
+
+    # Подстраховка: если окно по какой-то причине не получило фокус, всё равно закрываем меню
+    $t = New-Object System.Windows.Threading.DispatcherTimer
+    $t.Interval = [TimeSpan]::FromMilliseconds(300)
+    $t.Add_Tick({
+        $w = $script:TrayMenuWin
+        if (-not $w) { return }
+        if ((-not $w.IsActive) -and (([DateTime]::UtcNow - $script:TrayMenuShownAt).TotalMilliseconds -gt 800)) { Close-TrayMenu }
+    })
+    $script:TrayMenuTimer = $t
+    $t.Start()
+}
+
+$itemShow.Add_Click({ Restore-MainWindow })
+$notifyIcon.Add_DoubleClick({ Restore-MainWindow })
+$itemToggle.Add_Click({ Start-ToggleZapret })
+$itemExit.Add_Click({ Exit-App })
+$notifyIcon.Add_MouseUp({
+    param($sender, $me)
+    if ($me.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
+        try { Show-TrayMenu }
+        catch { try { $trayMenu.Show([System.Windows.Forms.Cursor]::Position) } catch {} }
+    }
 })
 
 $timer = New-Object System.Windows.Threading.DispatcherTimer
