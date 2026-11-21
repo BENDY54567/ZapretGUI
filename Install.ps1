@@ -121,7 +121,11 @@ if (-not (Test-Path -LiteralPath $buildTools)) {
         <TextBlock x:Name="statusIcon" Text="&#10003;" FontSize="30" Foreground="#00E28A"
                    HorizontalAlignment="Center" Margin="0,14,0,0" Opacity="0"/>
 
-        <CheckBox x:Name="chkLockFolder" IsChecked="True" Margin="0,16,0,0">
+        <CheckBox x:Name="chkDesktop" IsChecked="True" Margin="0,16,0,0">
+            <TextBlock Text="Создать ярлык на рабочем столе" TextWrapping="Wrap" Width="420" FontSize="12" Foreground="#B4B4C2"/>
+        </CheckBox>
+
+        <CheckBox x:Name="chkLockFolder" IsChecked="True" Margin="0,10,0,0">
             <TextBlock Text="Закрыть папку программы от обычных пользователей (списки и плейлист останутся доступны)" TextWrapping="Wrap" Width="420" FontSize="12" Foreground="#B7B7C2"/>
         </CheckBox>
 
@@ -150,6 +154,7 @@ $statusIcon = $window.FindName("statusIcon")
 $btnInstall = $window.FindName("btnInstall")
 $btnClose = $window.FindName("btnClose")
 $chkLockFolder = $window.FindName("chkLockFolder")
+$chkDesktop = $window.FindName("chkDesktop")
 
 function Write-Log {
     param([string]$Text)
@@ -313,19 +318,29 @@ $btnInstall.Add_Click({
     }
     Set-Progress -Percent 90
 
-    Write-Log "Создание ярлыка на рабочем столе..."
-    try {
-        $WshShell = New-Object -ComObject WScript.Shell
-        $shortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "Zapret.lnk"
-        $shortcut = $WshShell.CreateShortcut($shortcutPath)
-        $shortcut.TargetPath = $ExeOutput
-        $shortcut.WorkingDirectory = $RootDir
-        $shortcut.Description = "Zapret GUI BETA"
-        $shortcut.IconLocation = "$ExeOutput,0"
-        $shortcut.Save()
-        Write-Log "Ярлык создан на рабочем столе."
-    } catch {
-        Write-Log "Не удалось создать ярлык: $($_.Exception.Message)"
+    if ($chkDesktop.IsChecked) {
+        Write-Log "Создание ярлыка на рабочем столе..."
+        $made = $false
+        $desktops = @([Environment]::GetFolderPath("Desktop"), [Environment]::GetFolderPath("CommonDesktopDirectory"))
+        foreach ($dk in $desktops) {
+            if ($made -or -not $dk -or -not (Test-Path -LiteralPath $dk)) { continue }
+            try {
+                $WshShell = New-Object -ComObject WScript.Shell
+                $shortcut = $WshShell.CreateShortcut((Join-Path $dk "Zapret.lnk"))
+                $shortcut.TargetPath = $ExeOutput
+                $shortcut.WorkingDirectory = $RootDir
+                $shortcut.Description = "Zapret GUI BETA"
+                $shortcut.IconLocation = "$ExeOutput,0"
+                $shortcut.Save()
+                $made = $true
+                Write-Log "Ярлык создан: $dk"
+            } catch {
+                Write-Log "Не удалось создать ярлык в $dk : $($_.Exception.Message)"
+            }
+        }
+        if (-not $made) { Write-Log "Ярлык создать не удалось — запускайте ZapretGUI.exe из папки программы." }
+    } else {
+        Write-Log "Ярлык на рабочем столе пропущен (галочка снята)."
     }
 
     if ($chkLockFolder.IsChecked) {

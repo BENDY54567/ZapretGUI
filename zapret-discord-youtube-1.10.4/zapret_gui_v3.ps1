@@ -3954,18 +3954,49 @@ Refresh-StatusUI
 # ---------------------------------------------------------------
 $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
 $script:AppIcoFile = Join-Path $ZapretDir "assets\zapret.ico"
+
+# Иконка приложения, нарисованная кодом: не зависит от файлов и от того, чем собран exe
+function New-AppIcon {
+    param([int]$Size = 32)
+    $bmp = New-Object System.Drawing.Bitmap -ArgumentList $Size, $Size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try {
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.Clear([System.Drawing.Color]::Transparent)
+        $rect = New-Object System.Drawing.RectangleF -ArgumentList 1, 1, ($Size - 2), ($Size - 2)
+        $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush -ArgumentList $rect, ([System.Drawing.Color]::FromArgb(255, 142, 68, 224)), ([System.Drawing.Color]::FromArgb(255, 230, 57, 80)), 45.0
+        $g.FillEllipse($brush, $rect)
+        $pen = New-Object System.Drawing.Pen -ArgumentList ([System.Drawing.Color]::White), ([single]($Size * 0.09))
+        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $cx = $Size / 2.0
+        $cy = ($Size / 2.0) + ($Size * 0.02)
+        $r = $Size * 0.24
+        $g.DrawArc($pen, [single]($cx - $r), [single]($cy - $r), [single](2 * $r), [single](2 * $r), [single]-48, [single]276)
+        $g.DrawLine($pen, [single]$cx, [single]($cy - $r - ($Size * 0.06)), [single]$cx, [single]($cy - ($Size * 0.01)))
+        $brush.Dispose(); $pen.Dispose()
+    } finally { $g.Dispose() }
+    $icon = [System.Drawing.Icon]::FromHandle($bmp.GetHicon()).Clone()
+    $bmp.Dispose()
+    return $icon
+}
+
 $trayIcon = $null
-if (Test-Path -LiteralPath $script:AppIcoFile) { try { $trayIcon = New-Object System.Drawing.Icon($script:AppIcoFile) } catch {} }
-if (-not $trayIcon -and $SelfPath -like "*.exe") { try { $trayIcon = [System.Drawing.Icon]::ExtractAssociatedIcon($SelfPath) } catch {} }
+if (Test-Path -LiteralPath $script:AppIcoFile) { try { $trayIcon = New-Object System.Drawing.Icon -ArgumentList $script:AppIcoFile } catch {} }
+if (-not $trayIcon) { try { $trayIcon = New-AppIcon -Size 32 } catch {} }
 if (-not $trayIcon) { $trayIcon = [System.Drawing.SystemIcons]::Shield }
 $notifyIcon.Icon = $trayIcon
-# значок окна (заголовок и панель задач) — берём самый крупный кадр из .ico
-if (Test-Path -LiteralPath $script:AppIcoFile) {
-    try {
+
+# значок окна (заголовок и панель задач)
+try {
+    if (Test-Path -LiteralPath $script:AppIcoFile) {
         $icoDecoder = [System.Windows.Media.Imaging.BitmapDecoder]::Create([Uri]$script:AppIcoFile, [System.Windows.Media.Imaging.BitmapCreateOptions]::None, [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad)
         $window.Icon = ($icoDecoder.Frames | Sort-Object PixelWidth -Descending | Select-Object -First 1)
-    } catch {}
-}
+    } else {
+        $winIcon = New-AppIcon -Size 64
+        $window.Icon = [System.Windows.Interop.Imaging]::CreateBitmapSourceFromHIcon($winIcon.Handle, [System.Windows.Int32Rect]::Empty, [System.Windows.Media.Imaging.BitmapSizeOptions]::FromEmptyOptions())
+    }
+} catch {}
 $notifyIcon.Visible = $true
 $notifyIcon.Text = "Zapret BETA"
 
@@ -4050,8 +4081,9 @@ function Hide-ToTray {
             Reset-MainShift
             $window.Hide()
             $window.ShowInTaskbar = $false
+            [void](Set-TrayIconPromoted)
             $notifyIcon.BalloonTipTitle = "Zapret"
-            $notifyIcon.BalloonTipText = "Программа свёрнута в трей. Zapret продолжает работать в фоне."
+            $notifyIcon.BalloonTipText = "Zapret свёрнут в трей и работает в фоне. Значок — рядом с часами (если не видно, нажмите стрелку ^ в трее)."
             $notifyIcon.ShowBalloonTip(1500)
         } catch {}
     }
@@ -4084,6 +4116,55 @@ function Restore-MainWindow {
         Animate-MainOpacity -From 0 -To 1 -Ms 240 -Done $done
     }
 }
+
+# Windows 11 прячет значки новых программ под стрелку "^". Просим систему показывать наш значок
+# рядом с часами. Запись в реестре создаётся для каждого пути к exe отдельно, поэтому помним, какие
+# именно записи уже "закрепили": если пользователь потом спрячет значок сам — мы его не вернём,
+# а после переустановки (новая запись) закрепим заново.
+function Write-TrayLog {
+    param([string]$Text)
+    try { Add-Content -LiteralPath (Join-Path $UtilsDir "tray_debug.log") -Value ("{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Text) } catch {}
+}
+
+function Set-TrayIconPromoted {
+    try {
+        if (-not ($SelfPath -like "*.exe")) { return $true }
+        $root = "HKCU:\Control Panel\NotifyIconSettings"
+        if (-not (Test-Path -LiteralPath $root)) {
+            if (-not $script:TrayLogNoKey) { $script:TrayLogNoKey = $true; Write-TrayLog "Нет раздела NotifyIconSettings (Windows старее Win11 22H2?)" }
+            return $false
+        }
+        $flag = Join-Path $UtilsDir "tray_promoted.flag"
+        $done = @()
+        if (Test-Path -LiteralPath $flag) { $done = @(Get-Content -LiteralPath $flag -ErrorAction SilentlyContinue) }
+        $exeName = [System.IO.Path]::GetFileName($SelfPath)
+        $found = $false
+        foreach ($k in (Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+            $pth = (Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue).ExecutablePath
+            if ($pth -and ($pth -like ("*\" + $exeName))) {
+                $found = $true
+                if ($done -contains $k.PSChildName) { continue }
+                Set-ItemProperty -LiteralPath $k.PSPath -Name "IsPromoted" -Value 1 -Type DWord -Force
+                Add-Content -LiteralPath $flag -Value $k.PSChildName
+                Write-TrayLog ("Значок закреплён: " + $pth)
+            }
+        }
+        if (-not $found -and -not $script:TrayLogNoEntry) { $script:TrayLogNoEntry = $true; Write-TrayLog ("Запись для " + $exeName + " в NotifyIconSettings пока не найдена") }
+        return $found
+    } catch {
+        Write-TrayLog ("Ошибка закрепления значка: " + $_.Exception.Message)
+        return $false
+    }
+}
+
+$script:PromoteTries = 0
+$script:PromoteTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:PromoteTimer.Interval = [TimeSpan]::FromSeconds(3)
+$script:PromoteTimer.Add_Tick({
+    $script:PromoteTries++
+    if ((Set-TrayIconPromoted) -or $script:PromoteTries -ge 20) { $script:PromoteTimer.Stop() }
+})
+$script:PromoteTimer.Start()
 
 function Exit-App {
     $script:AllowClose = $true

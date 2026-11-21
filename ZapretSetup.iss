@@ -33,6 +33,9 @@ DisableWelcomePage=no
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Tasks]
+Name: "desktopicon"; Description: "Создать ярлык на &рабочем столе"; GroupDescription: "Дополнительно:"
+
 [Files]
 ; Готовый exe (его собирает GitHub Actions через ps2exe)
 Source: "ZapretGUI.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -41,7 +44,7 @@ Source: "zapret-discord-youtube-1.10.4\*"; DestDir: "{app}\zapret-discord-youtub
 
 [Icons]
 Name: "{group}\Zapret"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\Zapret"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\Zapret"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Zapret"; Flags: nowait postinstall skipifsilent shellexec
